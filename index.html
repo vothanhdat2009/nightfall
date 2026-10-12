@@ -3,92 +3,441 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14213d">
 <title>Nhận diện khuôn mặt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#eef2f6; --ink:#14213d; --muted:#5b6b82; --card:#fff; --line:#d5dde8; --accent:#2f5bea; --ok:#1f9d6b; --warn:#d9822b; }
+  :root {
+    --bg:#eef2f6; --ink:#14213d; --muted:#5b6b82; --card:#fff; --line:#d5dde8;
+    --accent:#2f5bea; --ok:#1f9d6b; --warn:#d9822b; --err:#c2392f; --idle:#6b7a90;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Be Vietnam Pro", system-ui, sans-serif; }
-  main { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; display:grid; gap:20px; grid-template-columns: 1fr; }
-  @media (min-width: 820px) { main { grid-template-columns: 1.6fr 1fr; align-items:start; } header { grid-column: 1 / -1; } }
-  h1 { margin:0 0 4px; font-size: 26px; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 20px 16px 16px; display:grid; gap:20px; grid-template-columns: minmax(0,1fr); }
+  @media (min-width: 820px) { main { grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); align-items:start; } header { grid-column: 1 / -1; } }
+  h1 { margin:0 0 4px; font-size: 26px; line-height:1.25; }
   header p { margin:0; color:var(--muted); }
-  .stage { position:relative; background:#0d1524; border-radius:12px; overflow:hidden; aspect-ratio: 4/3; }
+
+  .stage { position:relative; background:#0d1524; border-radius:12px; overflow:hidden; aspect-ratio: 4 / 3; max-height:78vh; width:100%; }
   video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-  #status { position:absolute; left:12px; bottom:12px; background:rgba(13,21,36,.8); color:#fff; padding:6px 12px; border-radius:8px; font-size:14px; }
+  #status { position:absolute; left:12px; bottom:12px; max-width:calc(100% - 24px); background:rgba(13,21,36,.85); color:#fff; padding:6px 12px 6px 28px; border-radius:8px; font-size:14px; line-height:1.4; }
+  #status::before { content:""; position:absolute; left:11px; top:13px; width:8px; height:8px; border-radius:50%; background:var(--idle); }
+  #status[data-kind="busy"]::before { background:var(--warn); }
+  #status[data-kind="ok"]::before { background:var(--ok); }
+  #status[data-kind="err"]::before { background:#ff6b5e; }
+
+  .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+  .controls .hint { flex:1 1 220px; }
+
+  .side { display:grid; gap:20px; }
   .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
   .panel h2 { margin:0 0 12px; font-size:17px; }
-  input { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; }
-  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 14px; cursor:pointer; background:var(--accent); color:#fff; }
+  input[type="text"] { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; background:#fff; color:inherit; }
+  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 14px; min-height:44px; cursor:pointer; background:var(--accent); color:#fff; }
   button:disabled { opacity:.5; cursor:not-allowed; }
-  button.ghost { background:transparent; color:var(--muted); padding:4px 8px; }
+  button.stop { background:var(--ink); }
+  button.ghost { background:transparent; color:var(--muted); padding:4px 8px; min-height:36px; }
+  button.ghost:hover:not(:disabled) { color:var(--err); }
   button:focus-visible, input:focus-visible { outline:3px solid #9db4ff; outline-offset:2px; }
+  input[type="range"] { width:100%; accent-color:var(--accent); }
   .row { display:flex; gap:8px; margin-bottom:8px; }
-  .row input { flex:1; }
+  .row input { flex:1; min-width:0; }
   ul { list-style:none; margin:12px 0 0; padding:0; }
-  li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line); overflow-wrap:anywhere; }
   li small { color:var(--muted); }
   .hint { color:var(--muted); font-size:14px; margin:0; }
-  #msg { min-height:22px; font-size:14px; margin:0 0 8px; }
+  #msg { min-height:22px; font-size:14px; margin:0 0 4px; }
+  #msg.ok { color:var(--ok); }
+  #msg.err { color:var(--err); }
+  .tune-head { display:flex; justify-content:space-between; gap:8px; font-size:14px; margin-bottom:4px; }
+  footer { max-width:1000px; margin:0 auto; padding:0 16px 32px; color:var(--muted); font-size:13px; }
+  footer p { margin:6px 0 0; }
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto !important; transition:none !important; } }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>Nhận diện khuôn mặt</h1>
-    <p>Chạy hoàn toàn trong trình duyệt. Dữ liệu khuôn mặt chỉ lưu trên máy của bạn.</p>
+    <p>Chạy hoàn toàn trong trình duyệt. Dữ liệu khuôn mặt chỉ lưu trên thiết bị của bạn.</p>
   </header>
 
-  <section class="stage">
-    <video id="video" autoplay muted playsinline></video>
-    <canvas id="overlay"></canvas>
-    <div id="status">Đang tải mô hình…</div>
-  </section>
-
-  <section class="panel">
-    <h2>Thêm người mới</h2>
-    <p class="hint" style="margin-bottom:10px">Nhìn thẳng vào camera, nhập tên rồi bấm lưu. Lưu 2–3 lần ở các góc khác nhau để nhận diện chính xác hơn.</p>
-    <div class="row">
-      <input id="name" placeholder="Tên người này" autocomplete="off">
-      <button id="save" disabled>Lưu khuôn mặt</button>
+  <div>
+    <section class="stage" id="stage" aria-label="Hình ảnh từ camera">
+      <video id="video" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+      <div id="status" role="status" aria-live="polite" data-kind="busy">Đang tải mô hình…</div>
+    </section>
+    <div class="controls">
+      <button id="camBtn" disabled>Đang tải…</button>
+      <p class="hint">Camera chỉ xử lý ngay trên máy, không gửi hình ảnh đi đâu.</p>
     </div>
-    <p id="msg" role="status"></p>
-    <h2 style="margin-top:16px">Danh sách đã lưu</h2>
-    <ul id="list"></ul>
-  </section>
+  </div>
+
+  <div class="side">
+    <section class="panel">
+      <h2>Thêm người mới</h2>
+      <p class="hint" style="margin-bottom:10px">Nhìn thẳng vào camera, nhập tên rồi bấm lưu. Lưu 3–5 lần, xoay mặt nhẹ và đổi ánh sáng một chút để nhận diện ổn định hơn (tối đa 10 mẫu mỗi người).</p>
+      <div class="row">
+        <input type="text" id="name" placeholder="Tên người này" autocomplete="off" maxlength="40" aria-label="Tên người này">
+        <button id="save" disabled>Lưu khuôn mặt</button>
+      </div>
+      <p id="msg" role="status"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Độ khắt khe khi nhận diện</h2>
+      <div class="tune-head"><span id="thLabel"></span><strong id="thValue"></strong></div>
+      <input type="range" id="threshold" min="0.35" max="0.65" step="0.01" aria-label="Ngưỡng nhận diện">
+      <p class="hint" style="margin-top:6px">Kéo về trái: chặt hơn, ít nhận nhầm người lạ nhưng dễ bỏ sót. Kéo về phải: dễ nhận hơn nhưng dễ nhầm.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Danh sách đã lưu</h2>
+      <ul id="list" style="margin-top:0"></ul>
+    </section>
+  </div>
 </main>
+
+<footer>
+  <p>Kết quả chỉ mang tính tham khảo và có thể sai khi thiếu sáng, ngược sáng, che mặt hoặc nghiêng mặt nhiều. Không dùng để xác thực bảo mật hay đưa ra quyết định quan trọng.</p>
+  <p>Ứng dụng chỉ lưu vector đặc trưng (128 số), không lưu ảnh, trong localStorage của trình duyệt này. Xoá dữ liệu trình duyệt sẽ làm mất danh sách.</p>
+</footer>
 
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
 <script>
-const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
-const STORE_KEY = 'face-db-v1';
-const THRESHOLD = 0.5; // càng nhỏ càng khắt khe
+'use strict';
 
+/* ---------- Cấu hình ---------- */
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const STORE_KEY = 'face-db-v1';          // giữ nguyên khóa cũ để không mất dữ liệu đã lưu
+const THRESH_KEY = 'face-threshold-v1';
+const DEFAULT_THRESHOLD = 0.5;           // khoảng cách Euclid tối đa để coi là cùng một người
+const MAX_SAMPLES = 10;                  // số mẫu tối đa mỗi người
+const MARGIN = 0.04;                     // người tốt nhất phải hơn người nhì ít nhất mức này
+const VOTE_WINDOW = 5;                   // số khung hình gần nhất dùng để bỏ phiếu
+const VOTES_NEEDED = 3;                  // số phiếu tối thiểu để chốt kết quả
+const FRAME_INTERVAL = 100;              // ms giữa hai lần nhận diện (giảm tải cho điện thoại)
+
+/* ---------- Phần tử giao diện ---------- */
 const $ = id => document.getElementById(id);
 const video = $('video'), canvas = $('overlay'), ctx = canvas.getContext('2d');
-const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+const stage = $('stage'), camBtn = $('camBtn'), saveBtn = $('save'), nameInput = $('name');
 
-let db = loadDb();          // [{ name, descriptors: [[128 số], ...] }]
-let matcher = null;
+/* ---------- Trạng thái ---------- */
+let db = loadDb();                 // mảng { name, descriptors } với mỗi descriptor là mảng 128 số
+let index = [];                    // bản Float32Array của db để so khớp nhanh
+let threshold = loadThreshold();
+let opts = null;                   // tùy chọn bộ phát hiện, tạo sau khi tải thư viện
+let modelsReady = false, loadingModels = false;
+let stream = null, cameraOn = false, starting = false;
+let session = 0;                   // tăng mỗi lần bật/tắt để dừng vòng lặp cũ
+let failCount = 0;
 let lastDetections = [];
+let tracks = [];                   // theo dõi từng khuôn mặt qua các khung hình
+let lastStatusText = '';
 
+/* ---------- Lưu trữ ---------- */
 function loadDb() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter(p => p && typeof p.name === 'string' && Array.isArray(p.descriptors))
+      .map(p => ({ name: p.name, descriptors: p.descriptors.filter(d => Array.isArray(d) && d.length === 128) }))
+      .filter(p => p.descriptors.length > 0);
+  } catch { return []; }
 }
 function saveDb() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch { showMsg('Không lưu được dữ liệu vào trình duyệt.'); }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); return true; }
+  catch { showMsg('Không lưu được dữ liệu vào trình duyệt (bộ nhớ đầy hoặc đang ở chế độ riêng tư). Dữ liệu chỉ giữ đến khi tải lại trang.', 'err'); return false; }
 }
-function buildMatcher() {
-  matcher = db.length
-    ? new faceapi.FaceMatcher(db.map(p => new faceapi.LabeledFaceDescriptors(p.name, p.descriptors.map(d => new Float32Array(d)))), THRESHOLD)
-    : null;
+function loadThreshold() {
+  try {
+    const v = parseFloat(localStorage.getItem(THRESH_KEY));
+    if (Number.isFinite(v)) return Math.min(0.65, Math.max(0.35, v));
+  } catch {}
+  return DEFAULT_THRESHOLD;
 }
-function showMsg(t) { $('msg').textContent = t; }
+function rebuildIndex() {
+  index = db.map(p => ({ name: p.name, vecs: p.descriptors.map(d => Float32Array.from(d)) }));
+  tracks = [];   // kết quả cũ không còn đúng nữa
+}
 
+/* ---------- So khớp ---------- */
+// Điểm của một người: nghiêng về mẫu gần nhất nhưng có tính thêm mẫu gần thứ hai,
+// để một mẫu "may mắn" không đủ để nhận nhầm.
+function personScore(desc, vecs) {
+  const ds = vecs.map(v => faceapi.euclideanDistance(desc, v)).sort((a, b) => a - b);
+  return ds.length > 1 ? 0.7 * ds[0] + 0.3 * ds[1] : ds[0];
+}
+function matchFace(desc) {
+  if (!index.length) return { name: null, dist: null, empty: true };
+  const scores = index.map(p => ({ name: p.name, dist: personScore(desc, p.vecs) })).sort((a, b) => a.dist - b.dist);
+  const best = scores[0], second = scores[1];
+  if (best.dist > threshold) return { name: null, dist: best.dist };                    // quá xa mọi người đã lưu
+  if (second && second.dist - best.dist < MARGIN) return { name: null, dist: best.dist }; // mơ hồ giữa hai người
+  return best;
+}
+// Bỏ phiếu qua vài khung hình gần nhất để tránh nhấp nháy và nhận nhầm thoáng qua.
+function decide(hist) {
+  if (hist[hist.length - 1].empty) return { state: 'empty' };
+  if (hist.length < VOTES_NEEDED) return { state: 'pending' };
+  const votes = new Map();
+  for (const h of hist) {
+    const k = h.name || '';
+    if (!votes.has(k)) votes.set(k, []);
+    votes.get(k).push(h.dist);
+  }
+  let topKey = null, topDists = [];
+  for (const [k, dists] of votes) if (dists.length > topDists.length) { topKey = k; topDists = dists; }
+  if (topDists.length < VOTES_NEEDED) return { state: 'pending' };
+  if (topKey === '') return { state: 'unknown' };
+  return { state: 'known', name: topKey, dist: topDists.reduce((s, d) => s + d, 0) / topDists.length };
+}
+function updateTracks(dets) {
+  const used = new Set(), results = [];
+  for (const d of dets) {
+    const b = d.detection.box, cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+    let best = null, bestD = Infinity;
+    for (const t of tracks) {
+      if (used.has(t)) continue;
+      const dd = Math.hypot(t.cx - cx, t.cy - cy);
+      if (dd < b.width * 0.7 && dd < bestD) { best = t; bestD = dd; }
+    }
+    if (!best) { best = { cx, cy, hist: [], miss: 0 }; tracks.push(best); }
+    used.add(best);
+    best.cx = cx; best.cy = cy; best.miss = 0;
+    best.hist.push(matchFace(d.descriptor));
+    if (best.hist.length > VOTE_WINDOW) best.hist.shift();
+    results.push({ det: d, verdict: decide(best.hist) });
+  }
+  for (const t of tracks) if (!used.has(t)) t.miss++;
+  tracks = tracks.filter(t => t.miss <= 3);
+  return results;
+}
+
+/* ---------- Vẽ kết quả ---------- */
+function draw(results) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const fs = Math.max(14, Math.round(canvas.width / 36));
+  ctx.font = `600 ${fs}px "Be Vietnam Pro", system-ui, sans-serif`;
+  ctx.lineWidth = Math.max(2, canvas.width / 320);
+  for (const { det, verdict } of results) {
+    let label, color;
+    if (verdict.state === 'known') { label = `${verdict.name} ${Math.round((1 - verdict.dist) * 100)}%`; color = '#1f9d6b'; }
+    else if (verdict.state === 'unknown') { label = 'Người lạ'; color = '#d9822b'; }
+    else if (verdict.state === 'empty') { label = 'Chưa có dữ liệu'; color = '#2f5bea'; }
+    else { label = 'Đang xác định…'; color = '#6b7a90'; }
+    const { x, y, width, height } = det.detection.box;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(x, y, width, height);
+    const th = fs + 10, tw = ctx.measureText(label).width + 12;
+    const ty = y - th >= 0 ? y - th : y + height;   // nhãn nằm trên khung, nếu hết chỗ thì xuống dưới
+    ctx.fillStyle = color;
+    ctx.fillRect(x, ty, tw, th);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 6, ty + fs + 1);
+  }
+}
+
+/* ---------- Trạng thái và thông báo ---------- */
+function setStatus(text, kind) {
+  const el = $('status');
+  if (text === lastStatusText && el.dataset.kind === kind) return;
+  lastStatusText = text;
+  el.textContent = text;
+  el.dataset.kind = kind;
+}
+function showMsg(text, kind) {
+  const el = $('msg');
+  el.textContent = text;
+  el.className = kind || '';
+}
+function updateUi() {
+  saveBtn.disabled = !cameraOn;
+  camBtn.classList.toggle('stop', cameraOn);
+  if (loadingModels) { camBtn.textContent = 'Đang tải mô hình…'; camBtn.disabled = true; }
+  else if (!modelsReady) { camBtn.textContent = 'Tải lại mô hình'; camBtn.disabled = false; }
+  else if (starting) { camBtn.textContent = 'Đang mở camera…'; camBtn.disabled = true; }
+  else { camBtn.textContent = cameraOn ? 'Tắt camera' : 'Bật camera'; camBtn.disabled = false; }
+}
+function setFaceCount(n) {
+  setStatus(n ? `Thấy ${n} khuôn mặt` : 'Không thấy khuôn mặt', 'ok');
+}
+
+/* ---------- Tải mô hình ---------- */
+async function loadModels() {
+  if (modelsReady || loadingModels) return modelsReady;
+  loadingModels = true; updateUi();
+  try {
+    if (typeof faceapi === 'undefined') throw new Error('Không tải được thư viện face-api');
+    let done = 0;
+    setStatus('Đang tải mô hình (0/3)…', 'busy');
+    await Promise.all([faceapi.nets.tinyFaceDetector, faceapi.nets.faceLandmark68Net, faceapi.nets.faceRecognitionNet].map(async net => {
+      await net.loadFromUri(MODEL_URL);
+      setStatus(`Đang tải mô hình (${++done}/3)…`, 'busy');
+    }));
+    opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+    modelsReady = true;
+    setStatus('Mô hình đã sẵn sàng', 'ok');
+  } catch (e) {
+    console.error(e);
+    setStatus('Không tải được mô hình nhận diện. Kiểm tra kết nối mạng rồi bấm “Tải lại mô hình”.', 'err');
+  } finally {
+    loadingModels = false; updateUi();
+  }
+  return modelsReady;
+}
+
+/* ---------- Camera ---------- */
+function cameraErrorText(e) {
+  switch (e && e.name) {
+    case 'NotAllowedError':
+    case 'SecurityError': return 'Quyền camera bị từ chối. Hãy cho phép camera trong cài đặt trình duyệt rồi bấm “Bật camera”.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError': return 'Không tìm thấy camera trên thiết bị này.';
+    case 'NotReadableError':
+    case 'TrackStartError': return 'Không đọc được camera. Có thể ứng dụng khác đang dùng camera.';
+    case 'OverconstrainedError': return 'Camera không đáp ứng được yêu cầu độ phân giải.';
+    default: return 'Không mở được camera' + (e && e.message ? `: ${e.message}` : '.');
+  }
+}
+function releaseStream() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  video.srcObject = null;
+}
+async function startCamera() {
+  if (starting || cameraOn) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus(window.isSecureContext ? 'Trình duyệt này không hỗ trợ camera.' : 'Cần mở trang qua HTTPS hoặc localhost để dùng camera.', 'err');
+    return;
+  }
+  starting = true; updateUi();
+  setStatus('Đang mở camera…', 'busy');
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      if (!cameraOn) return;
+      stopCamera();
+      setStatus('Camera đã bị ngắt kết nối. Bấm “Bật camera” để thử lại.', 'err');
+    });
+    cameraOn = true; failCount = 0;
+    const sid = ++session;
+    loop(sid);
+  } catch (e) {
+    console.error(e);
+    releaseStream();
+    setStatus(cameraErrorText(e), 'err');
+  } finally {
+    starting = false; updateUi();
+  }
+}
+function stopCamera() {
+  session++;                      // làm vòng lặp đang chạy tự dừng
+  cameraOn = false;
+  releaseStream();
+  lastDetections = []; tracks = [];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  setStatus('Camera đang tắt', 'idle');
+  updateUi();
+}
+
+/* ---------- Vòng lặp nhận diện ---------- */
+async function loop(sid) {
+  if (sid !== session) return;
+  const t0 = performance.now();
+  if (video.readyState >= 2) {
+    try {
+      const dets = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
+      if (sid !== session) return;
+      lastDetections = dets;
+      draw(updateTracks(dets));
+      setFaceCount(dets.length);
+      failCount = 0;
+    } catch (e) {
+      console.error(e);
+      if (++failCount >= 5) {
+        stopCamera();
+        setStatus('Lỗi khi nhận diện. Hãy tải lại trang và thử lại.', 'err');
+        return;
+      }
+    }
+  }
+  setTimeout(() => loop(sid), Math.max(0, FRAME_INTERVAL - (performance.now() - t0)));
+}
+
+/* ---------- Đăng ký khuôn mặt ---------- */
+const probe = document.createElement('canvas');
+probe.width = probe.height = 24;
+const pctx = probe.getContext('2d', { willReadFrequently: true });
+function faceBrightness(box) {
+  const x = Math.max(0, box.x), y = Math.max(0, box.y);
+  const w = Math.min(video.videoWidth - x, box.width), h = Math.min(video.videoHeight - y, box.height);
+  if (w <= 0 || h <= 0) return 128;
+  pctx.drawImage(video, x, y, w, h, 0, 0, 24, 24);
+  const data = pctx.getImageData(0, 0, 24, 24).data;
+  let sum = 0;
+  for (let i = 0; i < data.length; i += 4) sum += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+  return sum / (24 * 24);
+}
+// Trả về lý do mẫu chưa đủ tốt, hoặc null nếu dùng được.
+function checkQuality(d) {
+  const box = d.detection.box;
+  if (d.detection.score < 0.6) return 'Khuôn mặt chưa rõ. Hãy nhìn thẳng và giữ yên camera.';
+  if (box.width < video.videoWidth * 0.18) return 'Khuôn mặt quá nhỏ. Hãy lại gần camera hơn.';
+  const meanX = pts => pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const lm = d.landmarks;
+  const eyeL = meanX(lm.getLeftEye()), eyeR = meanX(lm.getRightEye());
+  const yaw = (meanX(lm.getNose()) - (eyeL + eyeR) / 2) / (Math.abs(eyeR - eyeL) || 1);
+  if (Math.abs(yaw) > 0.4) return 'Mặt đang nghiêng quá nhiều. Hãy xoay nhẹ về phía camera.';
+  const light = faceBrightness(box);
+  if (light < 60) return 'Khuôn mặt quá tối. Hãy ra chỗ sáng hơn.';
+  if (light > 210) return 'Khuôn mặt bị chói sáng. Hãy tránh ngược sáng hoặc ánh sáng gắt.';
+  return null;
+}
+function saveFace() {
+  const name = nameInput.value.trim().replace(/\s+/g, ' ');
+  if (!cameraOn) return showMsg('Hãy bật camera trước.', 'err');
+  if (!name) { showMsg('Nhập tên trước khi lưu.', 'err'); nameInput.focus(); return; }
+  if (lastDetections.length !== 1) return showMsg(lastDetections.length ? 'Chỉ để một khuôn mặt trong khung hình.' : 'Không thấy khuôn mặt nào. Nhìn thẳng vào camera.', 'err');
+  const d = lastDetections[0];
+  const problem = checkQuality(d);
+  if (problem) return showMsg(problem, 'err');
+
+  const desc = Array.from(d.descriptor, v => Math.round(v * 1e5) / 1e5);
+  let person = db.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if (!person) { person = { name, descriptors: [] }; db.push(person); }
+  person.descriptors.push(desc);
+  const replaced = person.descriptors.length > MAX_SAMPLES;
+  if (replaced) person.descriptors.shift();   // bỏ mẫu cũ nhất khi đã đủ
+
+  rebuildIndex(); renderList();
+  if (saveDb()) showMsg(`Đã lưu mẫu ${person.descriptors.length}/${MAX_SAMPLES} cho ${person.name}.${replaced ? ' Mẫu cũ nhất đã được thay thế.' : ''}`, 'ok');
+}
+
+/* ---------- Danh sách ---------- */
 function renderList() {
   const ul = $('list');
   ul.innerHTML = '';
-  if (!db.length) { ul.innerHTML = '<li><small>Chưa có ai. Thêm người đầu tiên ở trên.</small></li>'; return; }
+  if (!db.length) {
+    const li = document.createElement('li');
+    li.style.borderTop = '0';
+    li.innerHTML = '<small>Chưa có ai. Thêm người đầu tiên ở trên.</small>';
+    ul.appendChild(li);
+    return;
+  }
   db.forEach((p, i) => {
     const li = document.createElement('li');
     const span = document.createElement('span');
@@ -99,80 +448,47 @@ function renderList() {
     const del = document.createElement('button');
     del.className = 'ghost';
     del.textContent = 'Xoá';
-    del.onclick = () => { db.splice(i, 1); saveDb(); buildMatcher(); renderList(); };
+    del.setAttribute('aria-label', `Xoá ${p.name}`);
+    del.onclick = () => {
+      if (!confirm(`Xoá "${p.name}" và toàn bộ mẫu khuôn mặt đã lưu?`)) return;
+      db.splice(i, 1);
+      rebuildIndex(); renderList();
+      if (saveDb()) showMsg(`Đã xoá ${p.name}.`, 'ok');
+    };
     li.append(span, del);
     ul.appendChild(li);
   });
 }
 
-async function init() {
-  try {
-    await Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-    ]);
-  } catch (e) {
-    $('status').textContent = 'Không tải được mô hình. Kiểm tra kết nối mạng.';
-    return;
-  }
-  $('status').textContent = 'Đang mở camera…';
-  try {
-    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
-  } catch (e) {
-    $('status').textContent = 'Không mở được camera. Hãy cho phép quyền camera và mở trang qua localhost hoặc https.';
-    return;
-  }
-  await video.play();
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  $('save').disabled = false;
-  $('status').textContent = 'Sẵn sàng';
-  buildMatcher();
-  loop();
+/* ---------- Thanh chỉnh ngưỡng ---------- */
+function renderThreshold() {
+  $('thValue').textContent = threshold.toFixed(2);
+  $('thLabel').textContent = threshold < 0.45 ? 'Rất khắt khe' : threshold <= 0.55 ? 'Cân bằng' : 'Dễ tính (dễ nhận nhầm)';
 }
-
-async function loop() {
-  lastDetections = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const fs = Math.max(16, canvas.width / 32);
-  ctx.font = `600 ${fs}px "Be Vietnam Pro", sans-serif`;
-  ctx.lineWidth = Math.max(2, canvas.width / 320);
-
-  for (const d of lastDetections) {
-    let label = 'Người lạ', color = '#d9822b';
-    if (matcher) {
-      const m = matcher.findBestMatch(d.descriptor);
-      if (m.label !== 'unknown') { label = `${m.label} ${Math.round((1 - m.distance) * 100)}%`; color = '#1f9d6b'; }
-    } else {
-      label = 'Chưa có dữ liệu';
-    }
-    const { x, y, width, height } = d.detection.box;
-    ctx.strokeStyle = color;
-    ctx.strokeRect(x, y, width, height);
-    const tw = ctx.measureText(label).width + 12;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, Math.max(0, y - fs - 8), tw, fs + 8);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(label, x + 6, Math.max(fs, y - 8));
-  }
-  $('status').textContent = lastDetections.length ? `Thấy ${lastDetections.length} khuôn mặt` : 'Không thấy khuôn mặt';
-  requestAnimationFrame(loop);
-}
-
-$('save').onclick = () => {
-  const name = $('name').value.trim();
-  if (!name) return showMsg('Nhập tên trước khi lưu.');
-  if (lastDetections.length !== 1) return showMsg(lastDetections.length ? 'Chỉ để một khuôn mặt trong khung hình.' : 'Không thấy khuôn mặt nào. Nhìn thẳng vào camera.');
-  const desc = Array.from(lastDetections[0].descriptor);
-  const person = db.find(p => p.name.toLowerCase() === name.toLowerCase());
-  if (person) person.descriptors.push(desc); else db.push({ name, descriptors: [desc] });
-  saveDb(); buildMatcher(); renderList();
-  showMsg(`Đã lưu khuôn mặt của ${name}.`);
+const slider = $('threshold');
+slider.value = threshold;
+slider.oninput = () => {
+  threshold = parseFloat(slider.value);
+  tracks = [];   // áp dụng ngưỡng mới ngay
+  renderThreshold();
+  try { localStorage.setItem(THRESH_KEY, String(threshold)); } catch {}
 };
 
+/* ---------- Khởi động ---------- */
+camBtn.onclick = async () => {
+  if (cameraOn) return stopCamera();
+  if (!modelsReady && !(await loadModels())) return;
+  startCamera();
+};
+saveBtn.onclick = saveFace;
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveFace(); });
+window.addEventListener('pagehide', releaseStream);
+
+renderThreshold();
 renderList();
-init();
+rebuildIndex();
+updateUi();
+loadModels().then(ok => { if (ok) startCamera(); });
 </script>
 </body>
 </html>
