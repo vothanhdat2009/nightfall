@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nhận diện khuôn mặt</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#eef2f6; --ink:#14213d; --muted:#5b6b82; --card:#fff; --line:#d5dde8; --accent:#2f5bea; --ok:#1f9d6b; --warn:#d9822b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Be Vietnam Pro", system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; display:grid; gap:20px; grid-template-columns: 1fr; }
+  @media (min-width: 820px) { main { grid-template-columns: 1.6fr 1fr; align-items:start; } header { grid-column: 1 / -1; } }
+  h1 { margin:0 0 4px; font-size: 26px; }
+  header p { margin:0; color:var(--muted); }
+  .stage { position:relative; background:#0d1524; border-radius:12px; overflow:hidden; aspect-ratio: 4/3; }
+  video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #status { position:absolute; left:12px; bottom:12px; background:rgba(13,21,36,.8); color:#fff; padding:6px 12px; border-radius:8px; font-size:14px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .panel h2 { margin:0 0 12px; font-size:17px; }
+  input { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 14px; cursor:pointer; background:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.ghost { background:transparent; color:var(--muted); padding:4px 8px; }
+  button:focus-visible, input:focus-visible { outline:3px solid #9db4ff; outline-offset:2px; }
+  .row { display:flex; gap:8px; margin-bottom:8px; }
+  .row input { flex:1; }
+  ul { list-style:none; margin:12px 0 0; padding:0; }
+  li { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  li small { color:var(--muted); }
+  .hint { color:var(--muted); font-size:14px; margin:0; }
+  #msg { min-height:22px; font-size:14px; margin:0 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Nhận diện khuôn mặt</h1>
+    <p>Chạy hoàn toàn trong trình duyệt. Dữ liệu khuôn mặt chỉ lưu trên máy của bạn.</p>
+  </header>
+
+  <section class="stage">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div id="status">Đang tải mô hình…</div>
+  </section>
+
+  <section class="panel">
+    <h2>Thêm người mới</h2>
+    <p class="hint" style="margin-bottom:10px">Nhìn thẳng vào camera, nhập tên rồi bấm lưu. Lưu 2–3 lần ở các góc khác nhau để nhận diện chính xác hơn.</p>
+    <div class="row">
+      <input id="name" placeholder="Tên người này" autocomplete="off">
+      <button id="save" disabled>Lưu khuôn mặt</button>
+    </div>
+    <p id="msg" role="status"></p>
+    <h2 style="margin-top:16px">Danh sách đã lưu</h2>
+    <ul id="list"></ul>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script>
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const STORE_KEY = 'face-db-v1';
+const THRESHOLD = 0.5; // càng nhỏ càng khắt khe
+
+const $ = id => document.getElementById(id);
+const video = $('video'), canvas = $('overlay'), ctx = canvas.getContext('2d');
+const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+
+let db = loadDb();          // [{ name, descriptors: [[128 số], ...] }]
+let matcher = null;
+let lastDetections = [];
+
+function loadDb() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+}
+function saveDb() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch { showMsg('Không lưu được dữ liệu vào trình duyệt.'); }
+}
+function buildMatcher() {
+  matcher = db.length
+    ? new faceapi.FaceMatcher(db.map(p => new faceapi.LabeledFaceDescriptors(p.name, p.descriptors.map(d => new Float32Array(d)))), THRESHOLD)
+    : null;
+}
+function showMsg(t) { $('msg').textContent = t; }
+
+function renderList() {
+  const ul = $('list');
+  ul.innerHTML = '';
+  if (!db.length) { ul.innerHTML = '<li><small>Chưa có ai. Thêm người đầu tiên ở trên.</small></li>'; return; }
+  db.forEach((p, i) => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = p.name + ' ';
+    const small = document.createElement('small');
+    small.textContent = `(${p.descriptors.length} mẫu)`;
+    span.appendChild(small);
+    const del = document.createElement('button');
+    del.className = 'ghost';
+    del.textContent = 'Xoá';
+    del.onclick = () => { db.splice(i, 1); saveDb(); buildMatcher(); renderList(); };
+    li.append(span, del);
+    ul.appendChild(li);
+  });
+}
+
+async function init() {
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+    ]);
+  } catch (e) {
+    $('status').textContent = 'Không tải được mô hình. Kiểm tra kết nối mạng.';
+    return;
+  }
+  $('status').textContent = 'Đang mở camera…';
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
+  } catch (e) {
+    $('status').textContent = 'Không mở được camera. Hãy cho phép quyền camera và mở trang qua localhost hoặc https.';
+    return;
+  }
+  await video.play();
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  $('save').disabled = false;
+  $('status').textContent = 'Sẵn sàng';
+  buildMatcher();
+  loop();
+}
+
+async function loop() {
+  lastDetections = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const fs = Math.max(16, canvas.width / 32);
+  ctx.font = `600 ${fs}px "Be Vietnam Pro", sans-serif`;
+  ctx.lineWidth = Math.max(2, canvas.width / 320);
+
+  for (const d of lastDetections) {
+    let label = 'Người lạ', color = '#d9822b';
+    if (matcher) {
+      const m = matcher.findBestMatch(d.descriptor);
+      if (m.label !== 'unknown') { label = `${m.label} ${Math.round((1 - m.distance) * 100)}%`; color = '#1f9d6b'; }
+    } else {
+      label = 'Chưa có dữ liệu';
+    }
+    const { x, y, width, height } = d.detection.box;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(x, y, width, height);
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, Math.max(0, y - fs - 8), tw, fs + 8);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 6, Math.max(fs, y - 8));
+  }
+  $('status').textContent = lastDetections.length ? `Thấy ${lastDetections.length} khuôn mặt` : 'Không thấy khuôn mặt';
+  requestAnimationFrame(loop);
+}
+
+$('save').onclick = () => {
+  const name = $('name').value.trim();
+  if (!name) return showMsg('Nhập tên trước khi lưu.');
+  if (lastDetections.length !== 1) return showMsg(lastDetections.length ? 'Chỉ để một khuôn mặt trong khung hình.' : 'Không thấy khuôn mặt nào. Nhìn thẳng vào camera.');
+  const desc = Array.from(lastDetections[0].descriptor);
+  const person = db.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if (person) person.descriptors.push(desc); else db.push({ name, descriptors: [desc] });
+  saveDb(); buildMatcher(); renderList();
+  showMsg(`Đã lưu khuôn mặt của ${name}.`);
+};
+
+renderList();
+init();
+</script>
+</body>
+</html>
